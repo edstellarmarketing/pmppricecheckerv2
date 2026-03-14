@@ -208,6 +208,8 @@ if page == "🔍 Search & Compare":
 
             display_cols = ["Provider", f"Price ({display_currency})", "Price (USD)",
                             "Delivery", "Duration", "PDU hrs", "Voucher", "ATP", "Rating"]
+            # Remove duplicate when display currency is USD
+            display_cols = list(dict.fromkeys(display_cols))
             display_cols = [c for c in display_cols if c in df.columns]
 
             st.dataframe(
