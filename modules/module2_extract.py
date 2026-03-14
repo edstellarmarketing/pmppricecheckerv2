@@ -4,6 +4,7 @@ MODULE 2 — Firecrawl + DeepSeek (via OpenRouter) Price Extraction
 import streamlit as st
 import requests
 import json
+import re
 import time
 from dataclasses import dataclass, asdict, field
 from typing import Optional
@@ -93,12 +94,21 @@ def extract_with_llm(markdown: str, url: str, api_key: str) -> Optional[dict]:
         response.raise_for_status()
         data = response.json()
         raw = data["choices"][0]["message"]["content"].strip()
-        if raw.startswith("```"):
-            parts = raw.split("```")
-            raw = parts[1] if len(parts) > 1 else raw
-            if raw.startswith("json"):
-                raw = raw[4:]
-        return json.loads(raw.strip())
+        # Strip markdown code fences
+        if "```" in raw:
+            match = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw)
+            if match:
+                raw = match.group(1)
+        # Find the JSON object even if surrounded by extra text
+        json_match = re.search(r"\{[\s\S]*\}", raw)
+        if not json_match:
+            st.warning(f"No JSON found in LLM response for {url}")
+            return None
+        raw = json_match.group(0)
+        # Fix common issues: single quotes, trailing commas, comments
+        raw = re.sub(r"//.*?$", "", raw, flags=re.MULTILINE)  # remove line comments
+        raw = re.sub(r",\s*([}\]])", r"\1", raw)  # remove trailing commas
+        return json.loads(raw)
     except json.JSONDecodeError as e:
         st.warning(f"JSON parse error for {url}: {e}")
         return None

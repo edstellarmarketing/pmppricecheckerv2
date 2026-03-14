@@ -207,7 +207,7 @@ if page == "🔍 Search & Compare":
             st.subheader(f"PMP training in {loc_display}")
 
             display_cols = ["Provider", f"Price ({display_currency})", "Price (USD)",
-                            "Delivery", "Duration", "PDU hrs", "Voucher", "ATP", "Rating"]
+                            "Delivery", "Duration", "PDU hrs", "Voucher", "ATP", "Rating", "Course Page"]
             # Remove duplicate when display currency is USD
             display_cols = list(dict.fromkeys(display_cols))
             display_cols = [c for c in display_cols if c in df.columns]
@@ -215,7 +215,10 @@ if page == "🔍 Search & Compare":
             st.dataframe(
                 df[display_cols],
                 use_container_width=True,
-                column_config={"Provider": st.column_config.TextColumn(width="large")},
+                column_config={
+                    "Provider": st.column_config.TextColumn(width="large"),
+                    "Course Page": st.column_config.LinkColumn(display_text="View"),
+                },
             )
 
             csv = df[display_cols].to_csv(index=False)

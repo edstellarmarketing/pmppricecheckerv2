@@ -97,7 +97,7 @@ def build_comparison_df(courses: list, rates: dict, display_currency: str) -> pd
             "Voucher": "Yes ✅" if c.get("exam_voucher_included") else ("No" if c.get("exam_voucher_included") is False else "?"),
             "ATP": "✅" if c.get("is_atp") else "—",
             "Rating": f"{c['rating']} ⭐" if c.get("rating") else "N/A",
-            "URL": c.get("url", ""),
+            "Course Page": c.get("url", ""),
             "_sort": price_usd or 999999,
         })
     if not rows:
@@ -185,13 +185,16 @@ def render_module3():
     st.divider()
     st.subheader(f"PMP training prices — {location}")
 
-    display_cols = ["Provider", f"Price ({display_currency})", "Price (USD)", "Delivery", "Duration", "PDU hrs", "Voucher", "ATP", "Rating"]
+    display_cols = ["Provider", f"Price ({display_currency})", "Price (USD)", "Delivery", "Duration", "PDU hrs", "Voucher", "ATP", "Rating", "Course Page"]
     # Remove duplicate when display currency is USD
     display_cols = list(dict.fromkeys(display_cols))
     display_cols = [c for c in display_cols if c in df.columns]
 
     st.dataframe(df[display_cols], use_container_width=True,
-                 column_config={"Provider": st.column_config.TextColumn(width="large")})
+                 column_config={
+                     "Provider": st.column_config.TextColumn(width="large"),
+                     "Course Page": st.column_config.LinkColumn(display_text="View"),
+                 })
 
     csv = df[display_cols].to_csv(index=False)
     st.download_button("Download CSV", csv,
