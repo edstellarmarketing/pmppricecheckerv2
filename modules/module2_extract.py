@@ -1,5 +1,5 @@
 """
-MODULE 2 — Firecrawl + DeepSeek (via OpenRouter) Price Extraction
+MODULE 2 — Scraping (Firecrawl → Apify → BeautifulSoup) + DeepSeek Price Extraction
 """
 import streamlit as st
 import requests
@@ -8,6 +8,7 @@ import re
 import time
 from dataclasses import dataclass, asdict, field
 from typing import Optional
+from html.parser import HTMLParser
 
 
 @dataclass
@@ -60,6 +61,8 @@ PAGE CONTENT:
 
 
 def firecrawl_scrape(url: str, api_key: str) -> Optional[str]:
+    if not api_key:
+        return None
     endpoint = "https://api.firecrawl.dev/v1/scrape"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     payload = {"url": url, "formats": ["markdown"], "onlyMainContent": True, "waitFor": 2000}
@@ -70,9 +73,81 @@ def firecrawl_scrape(url: str, api_key: str) -> Optional[str]:
         if data.get("success") and data.get("data", {}).get("markdown"):
             return data["data"]["markdown"][:8000]
         return None
-    except requests.exceptions.RequestException as e:
-        st.warning(f"Firecrawl error for {url}: {e}")
+    except requests.exceptions.RequestException:
         return None
+
+
+def apify_scrape(url: str, api_key: str) -> Optional[str]:
+    if not api_key:
+        return None
+    endpoint = "https://api.apify.com/v2/acts/apify~website-content-crawler/run-sync-get-dataset-items"
+    params = {"token": api_key}
+    payload = {
+        "startUrls": [{"url": url}],
+        "maxCrawlPages": 1,
+        "crawlerType": "cheerio",
+    }
+    try:
+        response = requests.post(endpoint, params=params, json=payload, timeout=60)
+        response.raise_for_status()
+        data = response.json()
+        if data and len(data) > 0:
+            text = data[0].get("text") or data[0].get("markdown") or ""
+            return text[:8000] if text else None
+        return None
+    except requests.exceptions.RequestException:
+        return None
+
+
+class _TextExtractor(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self._parts = []
+        self._skip = False
+
+    def handle_starttag(self, tag, attrs):
+        self._skip = tag in ("script", "style", "noscript")
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style", "noscript"):
+            self._skip = False
+
+    def handle_data(self, data):
+        if not self._skip:
+            text = data.strip()
+            if text:
+                self._parts.append(text)
+
+    def get_text(self):
+        return "\n".join(self._parts)
+
+
+def free_scrape(url: str) -> Optional[str]:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=20, allow_redirects=True)
+        response.raise_for_status()
+        parser = _TextExtractor()
+        parser.feed(response.text)
+        text = parser.get_text()
+        return text[:8000] if text else None
+    except requests.exceptions.RequestException:
+        return None
+
+
+def scrape_url(url: str, firecrawl_key: str, apify_key: str) -> Optional[str]:
+    """Try Firecrawl first, then Apify, then free scraping."""
+    markdown = firecrawl_scrape(url, firecrawl_key)
+    if markdown:
+        return markdown
+
+    markdown = apify_scrape(url, apify_key)
+    if markdown:
+        return markdown
+
+    return free_scrape(url)
 
 
 def extract_with_llm(markdown: str, url: str, api_key: str) -> Optional[dict]:
@@ -149,7 +224,7 @@ def build_course_data(provider: dict, extracted: Optional[dict]) -> CourseData:
     )
 
 
-def extract_all_providers(providers: list, firecrawl_key: str, llm_key: str, max_providers: int = 15) -> list:
+def extract_all_providers(providers: list, firecrawl_key: str, llm_key: str, max_providers: int = 15, apify_key: str = "") -> list:
     results = []
     to_process = providers[:max_providers]
     progress = st.progress(0, text="Starting extraction...")
@@ -161,7 +236,7 @@ def extract_all_providers(providers: list, firecrawl_key: str, llm_key: str, max
         progress.progress((i + 1) / len(to_process), text=f"Extracting {i+1}/{len(to_process)}: {name}")
         status_box.caption(f"Scraping → {url[:70]}...")
 
-        markdown = firecrawl_scrape(url, firecrawl_key)
+        markdown = scrape_url(url, firecrawl_key, apify_key)
         if not markdown:
             results.append(build_course_data(provider, None))
             time.sleep(0.3)
@@ -186,10 +261,11 @@ def render_module2():
     st.caption("Crawls each provider page and extracts structured price data via DeepSeek")
 
     firecrawl_key = st.secrets.get("scraping", {}).get("FIRECRAWL_API_KEY", "")
+    apify_key = st.secrets.get("scraping", {}).get("APIFY_API_KEY", "")
     llm_key = st.secrets.get("llm", {}).get("OPENROUTER_API_KEY", "")
 
-    if not firecrawl_key or not llm_key:
-        st.error("FIRECRAWL_API_KEY or OPENROUTER_API_KEY missing from secrets.toml")
+    if not llm_key:
+        st.error("OPENROUTER_API_KEY missing from secrets.toml")
         return
 
     providers = st.session_state.get("discovered_providers", [])
@@ -203,7 +279,7 @@ def render_module2():
     max_p = st.slider("Max providers to extract (conserves Firecrawl credits)", 5, min(20, len(providers)), 10)
 
     if st.button("Extract Prices", type="primary"):
-        courses = extract_all_providers(providers, firecrawl_key, llm_key, max_providers=max_p)
+        courses = extract_all_providers(providers, firecrawl_key, llm_key, max_providers=max_p, apify_key=apify_key)
         st.session_state["extracted_courses"] = [asdict(c) for c in courses]
 
         successful = sum(1 for c in courses if c.extraction_status == "success")
