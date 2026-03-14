@@ -260,9 +260,10 @@ def render_module2():
     st.title("Module 2 — Price Extraction")
     st.caption("Crawls each provider page and extracts structured price data via DeepSeek")
 
-    firecrawl_key = st.secrets.get("scraping", {}).get("FIRECRAWL_API_KEY", "")
-    apify_key = st.secrets.get("scraping", {}).get("APIFY_API_KEY", "")
-    llm_key = st.secrets.get("llm", {}).get("OPENROUTER_API_KEY", "")
+    scraping_secrets = dict(st.secrets["scraping"]) if "scraping" in st.secrets else {}
+    firecrawl_key = scraping_secrets.get("FIRECRAWL_API_KEY", "")
+    apify_key = scraping_secrets.get("APIFY_API_KEY", "")
+    llm_key = st.secrets["llm"]["OPENROUTER_API_KEY"] if "llm" in st.secrets else ""
 
     if not llm_key:
         st.error("OPENROUTER_API_KEY missing from secrets.toml")

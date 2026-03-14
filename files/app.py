@@ -136,12 +136,13 @@ if page == "🔍 Search & Compare":
 
             # Step 2: Extract
             st.markdown("**Step 2 / 3 — Extracting prices...**")
+            scraping_secrets = dict(st.secrets["scraping"]) if "scraping" in st.secrets else {}
             courses_obj = extract_all_providers(
                 providers,
-                st.secrets.get("scraping", {}).get("FIRECRAWL_API_KEY", ""),
+                scraping_secrets.get("FIRECRAWL_API_KEY", ""),
                 st.secrets["llm"]["OPENROUTER_API_KEY"],
                 max_providers=12,
-                apify_key=st.secrets.get("scraping", {}).get("APIFY_API_KEY", ""),
+                apify_key=scraping_secrets.get("APIFY_API_KEY", ""),
             )
             courses = [asdict(c) for c in courses_obj]
             st.session_state["extracted_courses"] = courses
