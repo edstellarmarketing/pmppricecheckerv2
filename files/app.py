@@ -61,7 +61,6 @@ def check_keys():
     missing = []
     for section, key in [
         ("search", "SERPER_API_KEY"),
-        ("scraping", "FIRECRAWL_API_KEY"),
         ("llm", "OPENROUTER_API_KEY"),
         ("forex", "EXCHANGERATE_API_KEY"),
     ]:
@@ -139,9 +138,10 @@ if page == "🔍 Search & Compare":
             st.markdown("**Step 2 / 3 — Extracting prices...**")
             courses_obj = extract_all_providers(
                 providers,
-                st.secrets["scraping"]["FIRECRAWL_API_KEY"],
+                st.secrets.get("scraping", {}).get("FIRECRAWL_API_KEY", ""),
                 st.secrets["llm"]["OPENROUTER_API_KEY"],
                 max_providers=12,
+                apify_key=st.secrets.get("scraping", {}).get("APIFY_API_KEY", ""),
             )
             courses = [asdict(c) for c in courses_obj]
             st.session_state["extracted_courses"] = courses
