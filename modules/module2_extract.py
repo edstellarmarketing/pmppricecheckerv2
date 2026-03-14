@@ -1,7 +1,6 @@
 """
-MODULE 2 — Firecrawl + Claude Price Extraction
+MODULE 2 — Firecrawl + DeepSeek (via OpenRouter) Price Extraction
 """
-import anthropic
 import streamlit as st
 import requests
 import json
@@ -75,16 +74,25 @@ def firecrawl_scrape(url: str, api_key: str) -> Optional[str]:
         return None
 
 
-def extract_with_claude(markdown: str, url: str, api_key: str) -> Optional[dict]:
-    client = anthropic.Anthropic(api_key=api_key)
+def extract_with_llm(markdown: str, url: str, api_key: str) -> Optional[dict]:
     prompt = EXTRACTION_PROMPT.replace("{page_content}", markdown)
     try:
-        message = client.messages.create(
-            model="claude-haiku-4-5",
-            max_tokens=512,
-            messages=[{"role": "user", "content": prompt}]
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "deepseek/deepseek-chat-v3-0324",
+                "max_tokens": 512,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=60,
         )
-        raw = message.content[0].text.strip()
+        response.raise_for_status()
+        data = response.json()
+        raw = data["choices"][0]["message"]["content"].strip()
         if raw.startswith("```"):
             parts = raw.split("```")
             raw = parts[1] if len(parts) > 1 else raw
@@ -95,7 +103,7 @@ def extract_with_claude(markdown: str, url: str, api_key: str) -> Optional[dict]
         st.warning(f"JSON parse error for {url}: {e}")
         return None
     except Exception as e:
-        st.warning(f"Claude error for {url}: {e}")
+        st.warning(f"LLM error for {url}: {e}")
         return None
 
 
@@ -131,7 +139,7 @@ def build_course_data(provider: dict, extracted: Optional[dict]) -> CourseData:
     )
 
 
-def extract_all_providers(providers: list, firecrawl_key: str, anthropic_key: str, max_providers: int = 15) -> list:
+def extract_all_providers(providers: list, firecrawl_key: str, llm_key: str, max_providers: int = 15) -> list:
     results = []
     to_process = providers[:max_providers]
     progress = st.progress(0, text="Starting extraction...")
@@ -149,7 +157,7 @@ def extract_all_providers(providers: list, firecrawl_key: str, anthropic_key: st
             time.sleep(0.3)
             continue
 
-        extracted = extract_with_claude(markdown, url, anthropic_key)
+        extracted = extract_with_llm(markdown, url, llm_key)
         results.append(build_course_data(provider, extracted))
         time.sleep(0.4)
 
@@ -165,13 +173,13 @@ def extract_all_providers(providers: list, firecrawl_key: str, anthropic_key: st
 
 def render_module2():
     st.title("Module 2 — Price Extraction")
-    st.caption("Crawls each provider page and extracts structured price data via Claude")
+    st.caption("Crawls each provider page and extracts structured price data via DeepSeek")
 
     firecrawl_key = st.secrets.get("scraping", {}).get("FIRECRAWL_API_KEY", "")
-    anthropic_key = st.secrets.get("llm", {}).get("ANTHROPIC_API_KEY", "")
+    llm_key = st.secrets.get("llm", {}).get("OPENROUTER_API_KEY", "")
 
-    if not firecrawl_key or not anthropic_key:
-        st.error("FIRECRAWL_API_KEY or ANTHROPIC_API_KEY missing from secrets.toml")
+    if not firecrawl_key or not llm_key:
+        st.error("FIRECRAWL_API_KEY or OPENROUTER_API_KEY missing from secrets.toml")
         return
 
     providers = st.session_state.get("discovered_providers", [])
@@ -185,7 +193,7 @@ def render_module2():
     max_p = st.slider("Max providers to extract (conserves Firecrawl credits)", 5, min(20, len(providers)), 10)
 
     if st.button("Extract Prices", type="primary"):
-        courses = extract_all_providers(providers, firecrawl_key, anthropic_key, max_providers=max_p)
+        courses = extract_all_providers(providers, firecrawl_key, llm_key, max_providers=max_p)
         st.session_state["extracted_courses"] = [asdict(c) for c in courses]
 
         successful = sum(1 for c in courses if c.extraction_status == "success")

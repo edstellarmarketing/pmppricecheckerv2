@@ -53,7 +53,7 @@ with st.sidebar:
         st.caption(f"With prices: **{len(priced)}**")
 
     st.divider()
-    st.caption("Serper · Firecrawl · Claude · Supabase")
+    st.caption("Serper · Firecrawl · DeepSeek · Supabase")
 
 
 # ── Check required keys ──
@@ -62,7 +62,7 @@ def check_keys():
     for section, key in [
         ("search", "SERPER_API_KEY"),
         ("scraping", "FIRECRAWL_API_KEY"),
-        ("llm", "ANTHROPIC_API_KEY"),
+        ("llm", "OPENROUTER_API_KEY"),
         ("forex", "EXCHANGERATE_API_KEY"),
     ]:
         try:
@@ -140,7 +140,7 @@ if page == "🔍 Search & Compare":
             courses_obj = extract_all_providers(
                 providers,
                 st.secrets["scraping"]["FIRECRAWL_API_KEY"],
-                st.secrets["llm"]["ANTHROPIC_API_KEY"],
+                st.secrets["llm"]["OPENROUTER_API_KEY"],
                 max_providers=12,
             )
             courses = [asdict(c) for c in courses_obj]
